@@ -4,10 +4,10 @@ import sys
 import os
 from PIL import Image
 
-# 97 characters
-ascii_brightness = ("@MBW#HENRKXQDFP$&ASUZ8069G%45bdhmkxLOVYTgpqaensowzCIu237Jcfry1vl*+it[]{}?j|()=~!-/\\<>\"^_';,:`. ")
+# 95 characters
+ascii_brightness = (" .`:,;'_^\"><\\/-!~=)(|j?}{][ti+*lv1yrfcJ732uICzwosneaqpgTYVOLxkmhdb54%G9608ZUSA&$PFDQXKRNEH#WBM@")
 
-def convert_img():
+def get_img():
     # Get name of file
     if len(sys.argv) == 2:
         input_img = sys.argv[1]
@@ -20,29 +20,74 @@ def convert_img():
     # Get image into something managable
     image_file = Image.open(input_img)
     image_file = image_file.convert('L') # Convert image to grayscale
-    image_file.save('result.png')
+    # image_file.save('result.png')
 
-    pixels = list(image_file.getdata())
-    pixels = [-(-p * (len(ascii_brightness)-1) // 255) for p in pixels]
-    width, height = image_file.size
-    pixels = [pixels[i * width:(i + 1) * width] for i in range(height)] # Get list of rows of pixel values
+    return image_file
+
+
+
+def get_threshold():
+    # Get a value 0-255 that'll be used to blank pixels below that value
+    brightness_threshold = input("Would you like to have a minimum brightness threshold? [y/n]: ")
+    while brightness_threshold[0].lower() not in "yn":
+
+        # Or just accept a number right away
+        if brightness_threshold.isdigit() and 0 <= int(brightness_threshold) and int(brightness_threshold) <= 255:
+            return int(brightness_threshold)
+
+        brightness_threshold = input("Invalid input.\nWould you like to have a minimum brightness threshold? [y/n]: ")
+
+    # No threshold is the same as threshold = 0
+    if brightness_threshold[0].lower() == "n":
+        return 0
     
-    print(len(ascii_brightness))
-    # print(max(pixels))
 
+    # Ask for pixel value now
+    brightness_threshold = input("Input a brightness value between 0 to 255: ")
+    while not brightness_threshold.isdigit() or 0 > int(brightness_threshold) or int(brightness_threshold) > 255:
+        brightness_threshold = input("Invalid input.\nInput a brightness value between 0 to 255: ")
+
+    return brightness_threshold
+
+
+
+def manipulate_pixels(img):
+    # Get list of image pixels
+    pixels = list(img.getdata())
+
+    # Ask for minimum brightness value
+    threshold_val = get_threshold()
+
+    # Bound values into the range of ascii characters we have available
+    pixels = [p * (len(ascii_brightness) -1) // 255 if p >= threshold_val else 0 for p in pixels] # p/255 = x/ascii rank => x = p * ascii rank/255
+
+    return pixels
+
+
+
+def write_img(img, ascii_art_img, print_output=False):
+    width, height = img.size
+    ascii_art_img = [ascii_art_img[i * width:(i+1) * width] for i in range(height)] # Get list of rows of pixel values
+
+    # Print row-by-row
     with open("output.txt", "w") as output:
-        for row in pixels:
+        for row in ascii_art_img:
             for pixel in row:
                 output.write(ascii_brightness[pixel])
-                print(ascii_brightness[pixel], end="")
+                if print_output: print(ascii_brightness[pixel], end="")
             output.write("\n")
-            print()
-
+            if print_output: print()
 
 
 
 def main():
-    img = convert_img()
+    img = get_img()
+
+    # add invert grayscale
+    # add image resizing
+    ascii_art_img = manipulate_pixels(img)
+
+    write_img(img, ascii_art_img)
 
 
 
