@@ -63,9 +63,47 @@ def get_threshold():
 
 
 
+def crop(pixels):
+    # Ask to crop
+    crop = input("Would you like to crop the image? [y/n]: ")
+    while crop == '' or crop[0].lower() not in "yn":
+        crop = input("Invalid input.\nWould you like to crop the image? [y/n]: ")
+
+    if crop[0].lower() == "y":
+        # Crop each side
+        directions = ["left", "right", "top", "bottom"]
+        for direction in directions:
+            if direction == "left" or direction == "right":
+                far_bound = len(pixels[0])
+            else:
+                far_bound = len(pixels)
+            
+            crop = input(f"How many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
+            while not crop.isdigit() or 0 > int(crop) or int(crop) > far_bound:
+                crop = input(f"Invalid input.\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
+
+            crop = int(crop)
+            if crop == 0:
+                continue # No need to crop 0 pixels
+            
+            # Remove pixels from respective side
+            if direction == "left":
+                pixels = [row[crop:] for row in pixels if row]
+            elif direction == "right":
+                pixels = [row[:-crop] for row in pixels if row]
+            elif direction == "top":
+                pixels = pixels[crop:]
+            else:            # bottom
+                pixels = pixels[:-crop]
+
+    return pixels
+
+
+
 def manipulate_pixels(img):
     # Get list of image pixels
     pixels = list(img.getdata())
+    width, height = img.size
 
     # Ask to invert grayscale
     invert_grayscale(pixels)
@@ -78,14 +116,15 @@ def manipulate_pixels(img):
     # Bound values into the range of ascii characters we have available
     pixels = [p * (len(ascii_brightness) -1) // 255 for p in pixels] # p/255 = x/ascii rank => x = p * ascii rank/255
 
+    # Ask to crop image
+    pixels = [pixels[i * width:(i+1) * width] for i in range(height)] # Get list of rows of pixel values for output
+    pixels = crop(pixels) # Geeky ahh list comprehensions won't let me modify the list in the crop function
+
     return pixels
 
 
 
-def write_img(img, ascii_art_img, print_output=False):
-    width, height = img.size
-    ascii_art_img = [ascii_art_img[i * width:(i+1) * width] for i in range(height)] # Get list of rows of pixel values
-
+def write_img(ascii_art_img, print_output=False):
     # Print row-by-row
     with open("output.txt", "w") as output:
         for row in ascii_art_img:
@@ -101,11 +140,12 @@ def main():
     img = get_img()
 
     # TODO
-    # add image resizing
-    # Instead of linear [y/n] questioning, make it terminal prompt like
+    # add image scaling
+    # Instead of linear [y/n] questioning, make it terminal prompt like, probably using regex
+    # Also show the result between invert/threshold/scale/crop edits
     ascii_art_img = manipulate_pixels(img)
 
-    write_img(img, ascii_art_img)
+    write_img(ascii_art_img)
 
 
 
