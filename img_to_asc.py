@@ -56,7 +56,7 @@ def get_threshold():
 
     # Ask for pixel value now
     brightness_threshold = input("Input a brightness value between 0 to 255: ")
-    while not brightness_threshold.isdigit() or 0 > int(brightness_threshold) or int(brightness_threshold) > 255:
+    while not brightness_threshold.isdigit() or not (0 <= int(brightness_threshold) and int(brightness_threshold) <= 255):
         brightness_threshold = input("Invalid input.\nInput a brightness value between 0 to 255: ")
 
     return int(brightness_threshold)
@@ -79,7 +79,7 @@ def crop(pixels):
                 far_bound = len(pixels)
             
             crop = input(f"How many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
-            while not crop.isdigit() or 0 > int(crop) or int(crop) > far_bound:
+            while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= far_bound):
                 crop = input(f"Invalid input.\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
 
             crop = int(crop)
@@ -95,6 +95,41 @@ def crop(pixels):
                 pixels = pixels[crop:]
             else:            # bottom
                 pixels = pixels[:-crop]
+
+    return pixels
+
+
+
+def scale(pixels):
+    # Ask to scale
+    scale = input("Would you like to scale the image? [y/n]: ")
+    while scale == '' or scale[0].lower() not in "yn":
+        scale = input("Invalid input.\nWould you like to scale the image? [y/n]: ")
+
+    if scale[0].lower() == "y":
+        # Which way would they like to scale by?
+        print(f"Currently, the image dimensions are {len(pixels[0])} wide by {len(pixels)} tall ({((len(pixels[0])**2) + (len(pixels)**2))**2} diagonally)\n")
+        scale = input("Scale the image vertically, horizontally, or diagonally? [v/h/d]: ")
+        while scale == '' or scale[0].lower() not in "vhd":
+            scale = input("Invalid input.\nScale the image vertically, horizontally, or diagonally? [v/h/d]: ")
+
+        # Scale in 1 of the 3 ways!
+        if scale[0].lower() == "v":
+            scale = input(f"Enter a new character height for the image (currently {len(pixels)}): ")
+            while not scale.isdigit() or 0 > int(scale):
+                scale = input(f"Invalid input.\nEnter a new character height for the image (currently {len(pixels)}): ")
+        
+        elif scale[0].lower() == "h":
+            scale = input(f"Enter a new character width for the image (currently {len(pixels[0])}): ")
+            while not scale.isdigit() or 0 > int(scale):
+                scale = input(f"Invalid input.\nEnter a new character width for the image (currently {len(pixels[0])}): ")
+        
+        
+            scale = int(scale)
+            if (scale[0].lower() == "v" and scale < len(pixels)) or (scale[0].lower() == "h" and scale < len(pixels[0])):
+                scale_down(pixels, scale, "v") # TODO
+            elif scale > len(pixels):
+                scale_up(pixels, scale, "v") # TODO, if we scale_up after a scale_down, should we return the image to its original state first to raise quality?
 
     return pixels
 
@@ -116,9 +151,10 @@ def manipulate_pixels(img):
     # Bound values into the range of ascii characters we have available
     pixels = [p * (len(ascii_brightness) -1) // 255 for p in pixels] # p/255 = x/ascii rank => x = p * ascii rank/255
 
-    # Ask to crop image
+    # Ask to crop image and scale
     pixels = [pixels[i * width:(i+1) * width] for i in range(height)] # Get list of rows of pixel values for output
     pixels = crop(pixels) # Geeky ahh list comprehensions won't let me modify the list in the crop function
+    #pixels = scale(pixels) #TODO
 
     return pixels
 
