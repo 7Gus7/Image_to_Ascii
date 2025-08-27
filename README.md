@@ -1,2 +1,2 @@
 # Image_to_Ascii
-A little program that operates in Python that can take an image and spit out an Ascii art representation.
+A little Python program that takes an image and spits out an Ascii art representation.
