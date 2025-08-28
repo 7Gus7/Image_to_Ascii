@@ -9,43 +9,6 @@ from PIL import Image
 ascii_brightness = " `.-':,_\"^~;><!=*\\/+r?cL|)(vT7iJzsl}{xt[Y]Fnu1IfC3jo25eakSyVhPEwZK4XU69pbqdmAHRG#OD%8WNB$M0gQ&@"
 
 
-def crop(pixels):
-    # Ask to crop
-    crop = input("\nWould you like to crop the image? [y/n]: ")
-    while crop == '' or crop[0].lower() not in "yn":
-        crop = input("\nINVALID INPUT.\nWould you like to crop the image? [y/n]: ")
-
-    if crop[0].lower() == "y":
-        # Crop each side
-        directions = ["left", "right", "top", "bottom"]
-        for direction in directions:
-            if direction == "left" or direction == "right":
-                far_bound = len(pixels[0])
-            else:
-                far_bound = len(pixels)
-            
-            crop = input(f"\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
-            while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= far_bound):
-                crop = input(f"\nINVALID INPUT.\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
-
-            crop = int(crop)
-            if crop == 0:
-                continue # No need to crop 0 pixels
-            
-            # Remove pixels from respective side
-            if direction == "left":
-                pixels = [row[crop:] for row in pixels if row]
-            elif direction == "right":
-                pixels = [row[:-crop] for row in pixels if row]
-            elif direction == "top":
-                pixels = pixels[crop:]
-            else:            # bottom
-                pixels = pixels[:-crop]
-
-    return pixels
-
-
-
 def scale(pixels):
     # Ask to scale
     scale = input("\nWould you like to scale the image? [y/n]: ")
@@ -153,17 +116,22 @@ def get_img(new_image=True):
 
 
 
-def write_img(ascii_art_img, print_output=True):
+def write_img(ascii_art_img, edits, print_output=True):
+    # Apply edits first
+    working_copy = [row[:] for row in ascii_art_img]
+    if edits["minimum_thres"] != 0 or edits["maximum_thres"] != 255: # Brightness thresholds
+            working_copy = [[p if edits["minimum_thres"] <= p and p <= edits["maximum_thres"] else edits["fill_thres"] for p in row] for row in ascii_art_img]
+
+
     # Output row-by-row
     # Requires that ascii list is formatted like [[row][row][row]]
-
     if print_output:
         print()
     else:
         output = open("output.txt", "w") # TODO ask user for output file name
         
     # Iterate through rows of pixels
-    for row in ascii_art_img:
+    for row in working_copy:
         for pixel in row:
             # Bound values into the range of ascii characters we have available
             pixel = pixel * (len(ascii_brightness) -1) // 255 # p/255 = x/ascii rank => x = p * ascii rank/255
@@ -173,6 +141,7 @@ def write_img(ascii_art_img, print_output=True):
             else:
                 output.write(ascii_brightness[pixel])
 
+        # Next row
         if print_output:
             print()
         else:
@@ -194,77 +163,166 @@ def invert_brightness(pixels):
 
     # Flip the numbers around if yes
     if invert[0].lower() == "y":
-        print(len(pixels), len(pixels[0]))
         for row in range(len(pixels)):
             for pixel in range(len(pixels[0])):
                 pixels[row][pixel] = 255 - pixels[row][pixel] # Pixel values are from 0-255
     
 
 
-def adjust_brightness_threshold(pixels):
-    working_copy = [row[:] for row in pixels]
-    minimum = 0
-    maximum = 255
+def adjust_brightness_threshold(pixels, edits):
+    beginning_thresholds = [edits["minimum_thres"], edits["maximum_thres"], edits["fill_thres"]]
     
     # Sub menu for min and max brightness thresholds
     while True:
         print("\nBRIGHTNESS THRESHOLD OPTIONS:")
         print("1 - Adjust minimum brightness")
         print("2 - Adjust maximum brightness")
-        print("3 - Display ascii art")
-        print("4 - Reset ascii art brightness")
-        print("5 - Go back")
+        print("3 - Change fill brightness")
+        print("4 - Display ascii art")
+        print("5 - Reset ascii art brightness")
+        print("6 - Go back")
+        print(f"\nCURRENT BRIGHTNESS THRESHOLDS: {edits["minimum_thres"]} (minimum), {edits["maximum_thres"]} (maximum).")
 
         user_choice = input("\nPlease select a number: ")
-        while not user_choice.isdigit() or not (1 <= int(user_choice) and int(user_choice) <= 5):
+        while not user_choice.isdigit() or not (1 <= int(user_choice) and int(user_choice) <= 6):
             user_choice = input("\nINVALID INPUT.\nPlease select a number: ")
 
-        if int(user_choice) == 5:
-            if minimum != 0 or maximum != 255:
-                back = input("\nLeaving this menu will lose the ability to reset to the previous brightness. Are you sure you want to go back? [y/n]: ")
-                while back == '' or back[0].lower() not in "yn":
-                    back = input(f"\nINVALID INPUT.\nLeaving this menu will lose the ability to reset to the previous brightness. Are you sure you want to go back? [y/n]: ")
-
-            if (minimum == 0 and maximum == 255) or back[0].lower() == "y":
-                return working_copy, (minimum != 0 and maximum != 255) # Go back
+        # Now with user input, we can run their choice
+        if int(user_choice) == 6:
+            if [edits["minimum_thres"], edits["maximum_thres"], edits["fill_thres"]] != beginning_thresholds:
+                print("\nBRIGHTNESS THRESHOLD SETTINGS SAVED!")
+                return True
+            return False
         
+        elif int(user_choice) == 5:
+            edits["fill_thres"], edits["minimum_thres"] = 0
+            edits["maximum_thres"] = 255
+            print("\nRESET THRESHOLDS!") # Reset
+
         elif int(user_choice) == 4:
-            working_copy = [row[:] for row in pixels] # Reset
-            minimum = 0
-            maximum = 255
-            print("\nRESET THRESHOLDS!")
+            write_img(pixels, edits) # Display ascii art
 
         elif int(user_choice) == 3:
-            write_img(working_copy) # Display ascii art
+            # Ask for brightness to fill with
+            print("\nWhen characters are cut because they don't meet the threshold requirements, they are replaced with empty space (brightness = 0) by default.")
+            fill = input("Enter a brightness between 0 (default) to 255 as filler: ")
+            while not fill.isdigit() or not (0 <= int(fill) and int(fill) <= 255):
+                if len(fill) == 0:
+                    fill = "0"
+                else:
+                    fill = input(f"\nINVALID INPUT.\nEnter a brightness between 0 (default) to 255 as filler: ")
+            edits["fill_thres"] = int(fill)
 
         else:
             if int(user_choice) == 1: # Adjust min, make sure to not exceed past the current maximum brightness
-                input_option = f"\nInput a minimum brightness value between 0 to {maximum}: "
-                boundaries = [0, maximum]
+                input_option = f"\nInput a minimum brightness value between 0 to {edits["maximum_thres"]}: "
+                boundaries = [0, edits["maximum_thres"]]
                 print("Pro tip: A value of 0 won't change anything.")
             else: # Likewise
-                input_option = f"\nInput a maximum brightness value between {minimum} to 255: "
-                boundaries = [minimum, 255]
+                input_option = f"\nInput a maximum brightness value between {edits["minimum_thres"]} to 255: "
+                boundaries = [edits["minimum_thres"], 255]
                 print("Pro tip: A value of 255 won't change anything.")
             
             # Ask for pixel value
             brightness_threshold = input(input_option)
             while not brightness_threshold.isdigit() or not (boundaries[0] <= int(brightness_threshold) and int(brightness_threshold) <= boundaries[1]):
                 brightness_threshold = input(f"\nINVALID INPUT.{input_option}")
-
-            # Ask for brightness to fill with
-            fill = input("\nEnter a brightness to fill in with (default is 0): ")
-            while not fill.isdigit() or not (0 <= int(fill) and int(fill) <= 255):
-                if len(fill) == 0:
-                    fill = "0"
-                else:
-                    fill = input(f"\nINVALID INPUT.\nEnter a brightness to fill in with (default is 0): ")
                 
             if int(user_choice) == 1:
-                minimum = int(brightness_threshold)
+                edits["minimum_thres"] = int(brightness_threshold)
             else:
-                maximum = int(brightness_threshold)
-            working_copy = [[p if minimum <= p and p <= maximum else int(fill) for p in row] for row in pixels]
+                edits["maximum_thres"] = int(brightness_threshold)
+
+
+
+def crop(pixels, edits):
+    beginning_thresholds = [edits["crop_l"], edits["crop_r"], edits["crop_t"], edits["crop_b"]]
+    
+    # Sub menu for cropping
+    while True:
+        print("\nCROPPING OPTIONS:")
+        print("1 - Crop left")
+        print("2 - Crop right")
+        print("3 - Crop top")
+        print("4 - Crop bottom")
+        print("5 - Display ascii art")
+        print("6 - Reset croppings")
+        print("7 - Go back")
+        print(f"\nCURRENT crops: {edits["crop_l"]} (left), {edits["crop_r"]} (right), {edits["crop_t"]} (top), {edits["crop_b"]} (bottom).")
+
+        user_choice = input("\nPlease select a number: ")
+        while not user_choice.isdigit() or not (1 <= int(user_choice) and int(user_choice) <= 7):
+            user_choice = input("\nINVALID INPUT.\nPlease select a number: ")
+
+        # Now with user input, we can run their choice
+        if int(user_choice) == 7:
+            if [edits["crop_l"], edits["crop_r"], edits["crop_t"], edits["crop_b"]] != beginning_thresholds:
+                print("\nCROPPING SAVED!")
+                return True
+            return False
+        
+        elif int(user_choice) == 6:
+            edits["crop_l"], edits["crop_r"], edits["crop_t"], edits["crop_b"] = 0
+            print("\nRESET THRESHOLDS!") # Reset
+
+        elif int(user_choice) == 5:
+            write_img(pixels, edits) # Display ascii art
+        
+        else: # Adjust croppings
+            if int(user_choice) == 1: # Left, make sure to not exceed past the current right crop
+                input_option = f"\nHow many characters would you like to crop off the left? Enter a value between 0 and {len(pixels[0]) - edits["crop_r"]}: " #LEFT OFF HERE
+                boundaries = [0, edits["maximum_thres"]]
+                print("Pro tip: A value of 0 won't change anything.")
+            elif int(user_choice) == 2: # Likewise for right
+                input_option = f"\nInput a maximum brightness value between {edits["minimum_thres"]} to 255: "
+                boundaries = [edits["minimum_thres"], 255]
+                print("Pro tip: A value of 255 won't change anything.")
+            
+            # Ask for pixel value
+            brightness_threshold = input(input_option)
+            while not brightness_threshold.isdigit() or not (boundaries[0] <= int(brightness_threshold) and int(brightness_threshold) <= boundaries[1]):
+                brightness_threshold = input(f"\nINVALID INPUT.{input_option}")
+                
+            if int(user_choice) == 1:
+                edits["minimum_thres"] = int(brightness_threshold)
+            else:
+                edits["maximum_thres"] = int(brightness_threshold)
+
+
+
+    # Ask to crop
+    crop = input("\nWould you like to crop the image? [y/n]: ")
+    while crop == '' or crop[0].lower() not in "yn":
+        crop = input("\nINVALID INPUT.\nWould you like to crop the image? [y/n]: ")
+
+    if crop[0].lower() == "y":
+        # Crop each side
+        directions = ["left", "right", "top", "bottom"]
+        for direction in directions:
+            if direction == "left" or direction == "right":
+                far_bound = len(pixels[0])
+            else:
+                far_bound = len(pixels)
+            
+            crop = input(f"\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
+            while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= far_bound):
+                crop = input(f"\nINVALID INPUT.\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
+
+            crop = int(crop)
+            if crop == 0:
+                continue # No need to crop 0 pixels
+            
+            # Remove pixels from respective side
+            if direction == "left":
+                pixels = [row[crop:] for row in pixels if row]
+            elif direction == "right":
+                pixels = [row[:-crop] for row in pixels if row]
+            elif direction == "top":
+                pixels = pixels[crop:]
+            else:            # bottom
+                pixels = pixels[:-crop]
+
+    return pixels
 
 
 
@@ -288,6 +346,7 @@ def exit_program(saved):
 
 def main():
     img = None
+    edits = {"minimum_thres": 0, "maximum_thres": 255, "fill_thres": 0, "crop_l": 0, "crop_r": 0, "crop_t": 0, "crop_b": 0, "scale_x": None, "scale_y": None}
 
     # Infinite loop until user is finished making the ascii art
     while True:
@@ -302,16 +361,15 @@ def main():
 
             # Get list of rows formatted like [[row][row][row]] of pixel values for output
             pixels = list(img.getdata())
-            width, height = img.size
-            pixels = [pixels[i * width:(i+1) * width] for i in range(height)]
+            edits["scale_x"], edits["scale_y"] = img.size
+            pixels = [pixels[i * edits["scale_x"]:(i+1) * edits["scale_x"]] for i in range(edits["scale_y"])]
             
 
-
         elif option == 2:
-            write_img(pixels) # Display ascii art
+            write_img(pixels, edits) # Display ascii art
 
         elif option == 3:
-            write_img(pixels, print_output=False) # Save ascii art to file
+            write_img(pixels, edits, print_output=False) # Save ascii art to file
             saved = True
 
         elif option == 4:
@@ -319,11 +377,11 @@ def main():
             saved = False
 
         elif option == 5:
-            pixels, adjusted = adjust_brightness_threshold(pixels)
-            saved = not adjusted and saved
-
+            saved = not adjust_brightness_threshold(pixels, edits) and saved
+            
         elif option == 6:
-            saved = False
+            pass
+            # saved = not crop(pixels, edits) and saved
 
         elif option == 7:
             saved = False
@@ -341,7 +399,6 @@ def main():
         # add help menu
         # Allow user to change order of Ascii character brightnesses (for other fonts)
         # Instead of linear [y/n] questioning, make it terminal prompt like, probably using regex
-        # Also show the result between invert/threshold/scale/crop edits
         # ascii_art_img = manipulate_pixels(img)
 
     print("\nEXITING PROGRAM... Goodbye!")
