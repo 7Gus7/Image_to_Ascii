@@ -120,7 +120,13 @@ def write_img(ascii_art_img, edits, print_output=True):
     # Apply edits first
     working_copy = [row[:] for row in ascii_art_img]
     if edits["minimum_thres"] != 0 or edits["maximum_thres"] != 255: # Brightness thresholds
-            working_copy = [[p if edits["minimum_thres"] <= p and p <= edits["maximum_thres"] else edits["fill_thres"] for p in row] for row in ascii_art_img]
+        working_copy = [[p if edits["minimum_thres"] <= p and p <= edits["maximum_thres"] else edits["fill_thres"] for p in row] for row in ascii_art_img]
+    
+    # Crop edits, remove pixels from respective sides
+    if edits["crop_l"]: working_copy = [row[edits["crop_l"]:] for row in working_copy if row]
+    if edits["crop_r"]: working_copy = [row[:-edits["crop_r"]] for row in working_copy if row]
+    if edits["crop_t"]: working_copy = working_copy[edits["crop_t"]:]
+    if edits["crop_b"]: working_copy = working_copy[:-edits["crop_b"]]
 
 
     # Output row-by-row
@@ -195,7 +201,8 @@ def adjust_brightness_threshold(pixels, edits):
             return False
         
         elif int(user_choice) == 5:
-            edits["fill_thres"], edits["minimum_thres"] = 0
+            edits["fill_thres"] = 0
+            edits["minimum_thres"] = 0
             edits["maximum_thres"] = 255
             print("\nRESET THRESHOLDS!") # Reset
 
@@ -262,67 +269,45 @@ def crop(pixels, edits):
             return False
         
         elif int(user_choice) == 6:
-            edits["crop_l"], edits["crop_r"], edits["crop_t"], edits["crop_b"] = 0
+            edits["crop_l"] = 0
+            edits["crop_r"] = 0
+            edits["crop_t"] = 0
+            edits["crop_b"] = 0
             print("\nRESET THRESHOLDS!") # Reset
 
         elif int(user_choice) == 5:
             write_img(pixels, edits) # Display ascii art
         
         else: # Adjust croppings
+            print("Pro tip: A value of 0 won't crop anything.")
+            input_option = "\nHow many characters would you like to crop off the "
             if int(user_choice) == 1: # Left, make sure to not exceed past the current right crop
-                input_option = f"\nHow many characters would you like to crop off the left? Enter a value between 0 and {len(pixels[0]) - edits["crop_r"]}: " #LEFT OFF HERE
-                boundaries = [0, edits["maximum_thres"]]
-                print("Pro tip: A value of 0 won't change anything.")
+                input_option += "left? "
+                boundary = len(pixels[0]) - edits["crop_r"]
             elif int(user_choice) == 2: # Likewise for right
-                input_option = f"\nInput a maximum brightness value between {edits["minimum_thres"]} to 255: "
-                boundaries = [edits["minimum_thres"], 255]
-                print("Pro tip: A value of 255 won't change anything.")
+                input_option += "right? "
+                boundary = len(pixels[0]) - edits["crop_l"]
+            elif int(user_choice) == 3: # Likewise for top
+                input_option += "top? "
+                boundary = len(pixels) - edits["crop_b"]
+            elif int(user_choice) == 4: # Likewise for bottom
+                input_option += "bottom? "
+                boundary = len(pixels) - edits["crop_t"]
+            input_option += f"Enter a value between 0 and {boundary}: "
             
-            # Ask for pixel value
-            brightness_threshold = input(input_option)
-            while not brightness_threshold.isdigit() or not (boundaries[0] <= int(brightness_threshold) and int(brightness_threshold) <= boundaries[1]):
-                brightness_threshold = input(f"\nINVALID INPUT.{input_option}")
-                
-            if int(user_choice) == 1:
-                edits["minimum_thres"] = int(brightness_threshold)
-            else:
-                edits["maximum_thres"] = int(brightness_threshold)
+            # Ask for crop amount
+            crop = input(input_option)
+            while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= boundary):
+                crop = input(f"\nINVALID INPUT.{input_option}")
 
-
-
-    # Ask to crop
-    crop = input("\nWould you like to crop the image? [y/n]: ")
-    while crop == '' or crop[0].lower() not in "yn":
-        crop = input("\nINVALID INPUT.\nWould you like to crop the image? [y/n]: ")
-
-    if crop[0].lower() == "y":
-        # Crop each side
-        directions = ["left", "right", "top", "bottom"]
-        for direction in directions:
-            if direction == "left" or direction == "right":
-                far_bound = len(pixels[0])
-            else:
-                far_bound = len(pixels)
-            
-            crop = input(f"\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
-            while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= far_bound):
-                crop = input(f"\nINVALID INPUT.\nHow many characters would you like to crop off the {direction}? Enter a value between 0 to {far_bound}: ")
-
-            crop = int(crop)
-            if crop == 0:
-                continue # No need to crop 0 pixels
-            
-            # Remove pixels from respective side
-            if direction == "left":
-                pixels = [row[crop:] for row in pixels if row]
-            elif direction == "right":
-                pixels = [row[:-crop] for row in pixels if row]
-            elif direction == "top":
-                pixels = pixels[crop:]
-            else:            # bottom
-                pixels = pixels[:-crop]
-
-    return pixels
+            if int(user_choice) == 1: # Update left crop
+                edits["crop_l"] = int(crop)
+            elif int(user_choice) == 2: # Right crop
+                edits["crop_r"] = int(crop)
+            elif int(user_choice) == 3: # Top crop
+                edits["crop_t"] = int(crop)
+            elif int(user_choice) == 4: # Bottom crop
+                edits["crop_b"] = int(crop)
 
 
 
@@ -380,8 +365,7 @@ def main():
             saved = not adjust_brightness_threshold(pixels, edits) and saved
             
         elif option == 6:
-            pass
-            # saved = not crop(pixels, edits) and saved
+            saved = not crop(pixels, edits) and saved
 
         elif option == 7:
             saved = False
