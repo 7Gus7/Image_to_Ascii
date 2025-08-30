@@ -2,68 +2,11 @@
 
 import sys
 import os
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 # 95 characters (watch out for escape characters!)
 # Generated order via order_chars.py
 ascii_brightness = " `.-':,_\"^~;><!=*\\/+r?cL|)(vT7iJzsl}{xt[Y]Fnu1IfC3jo25eakSyVhPEwZK4XU69pbqdmAHRG#OD%8WNB$M0gQ&@"
-
-
-def scale(pixels):
-    # Ask to scale
-    scale = input("\nWould you like to scale the image? [y/n]: ")
-    while scale == '' or scale[0].lower() not in "yn":
-        scale = input("\nINVALID INPUT.\nWould you like to scale the image? [y/n]: ")
-
-    if scale[0].lower() == "y":
-        # Which way would they like to scale by?
-        print(f"Currently, the image dimensions are {len(pixels[0])} wide by {len(pixels)} tall ({((len(pixels[0])**2) + (len(pixels)**2))**2} diagonally)")
-        scale = input("\nScale the image vertically, horizontally, or diagonally? [v/h/d]: ")
-        while scale == '' or scale[0].lower() not in "vhd":
-            scale = input("\nINVALID INPUT.\nScale the image vertically, horizontally, or diagonally? [v/h/d]: ")
-
-        # Scale in 1 of the 3 ways!
-        if scale[0].lower() == "v":
-            scale = input(f"\nEnter a new character height for the image (currently {len(pixels)}): ")
-            while not scale.isdigit() or 0 > int(scale):
-                scale = input(f"\nINVALID INPUT.\nEnter a new character height for the image (currently {len(pixels)}): ")
-        
-        elif scale[0].lower() == "h":
-            scale = input(f"\nEnter a new character width for the image (currently {len(pixels[0])}): ")
-            while not scale.isdigit() or 0 > int(scale):
-                scale = input(f"\nINVALID INPUT.\nEnter a new character width for the image (currently {len(pixels[0])}): ")
-        
-        
-            scale = int(scale)
-            if (scale[0].lower() == "v" and scale < len(pixels)) or (scale[0].lower() == "h" and scale < len(pixels[0])):
-                scale_down(pixels, scale, "v") # TODO
-            elif scale > len(pixels):
-                scale_up(pixels, scale, "v") # TODO, if we scale_up after a scale_down, should we return the image to its original state first to raise quality?
-
-    return pixels
-
-
-
-def manipulate_pixels(img):
-
-    # Ask to invert brightness
-    invert_brightness(pixels)
-
-    # Ask for minimum brightness value
-    threshold_val = get_threshold()
-    if threshold_val:
-        pixels = [p if p >= threshold_val else 0 for p in pixels]
-
-    # Bound values into the range of ascii characters we have available
-    pixels = [p * (len(ascii_brightness) -1) // 255 for p in pixels] # p/255 = x/ascii rank => x = p * ascii rank/255
-
-    # Ask to crop image and scale
-    pixels = [pixels[i * width:(i+1) * width] for i in range(height)] # Get list of rows of pixel values for output
-    pixels = crop(pixels) # Geeky ahh list comprehensions won't let me modify the list in the crop function
-    #pixels = scale(pixels) #TODO
-
-    return pixels
-
 
 
 def show_menu(img):
@@ -102,22 +45,43 @@ def get_img(new_image=True):
     if len(sys.argv) == 2 and new_image:
         input_img = sys.argv[1]
     else:
-        input_img = input("\nPlease enter the filename of your image: ") # TODO Add an option to cancel and go back
+        input_img = input("\nPlease enter the name of your image file: ")
     
-    while os.path.isfile(input_img) == False or input_img[-4:] != ".png": # TODO Might be able to change this to any image file...
-        input_img = input("\nFILE NOT FOUND!\nPlease enter the filename of your image: ")
+    while True:
+        while not os.path.isfile(input_img):
+            input_img = input("\nFILE NOT FOUND!\nPlease enter the name of your image file: ")
 
-    # Get image into something managable
-    image_file = Image.open(input_img)
-    image_file = image_file.convert('L') # Convert image to grayscale
+        # Get image into something managable
+        try:
+            image_file = Image.open(input_img)
+            image_file = image_file.convert('L') # Convert image to grayscale
+            break
+        except UnidentifiedImageError:
+            print("\nNOT A VALID IMAGE FILE!", end="")
+            input_img = ""
+    
     # image_file.save('result.png')
-
     return image_file
 
 
 
+def scale_matrix(matrix, new_width, new_height):
+    # Helper function for scaling, called from write_img
+    result = []
+    for y in range(new_height): # Iterating through each (now scaled) height level
+        # We are going to find a source pixel (x, y) to map into our new scaled image
+        src_y = int(y * len(matrix) / new_height) # y/new_height = src_y/original height => src_y = y * original height/new_height
+        row = []
+        for x in range(new_width): # Iterating through each (now scaled) row position
+            src_x = int(x * len(matrix[0]) / new_width) # x/new_width = src_x/original width => src_x = x * original width/new_width
+            row.append(matrix[src_y][src_x])
+        result.append(row)
+    return result
+
+
+
 def write_img(ascii_art_img, edits, print_output=True):
-    # Apply edits first
+    # APPLY EDITS FIRST
     working_copy = [row[:] for row in ascii_art_img]
     if edits["minimum_thres"] != 0 or edits["maximum_thres"] != 255: # Brightness thresholds
         working_copy = [[p if edits["minimum_thres"] <= p and p <= edits["maximum_thres"] else edits["fill_thres"] for p in row] for row in ascii_art_img]
@@ -128,13 +92,19 @@ def write_img(ascii_art_img, edits, print_output=True):
     if edits["crop_t"]: working_copy = working_copy[edits["crop_t"]:]
     if edits["crop_b"]: working_copy = working_copy[:-edits["crop_b"]]
 
+    # Scale to new size
+    new_width = int(len(working_copy[0]) * float(edits["scale_x"]/100))
+    new_height = int(len(working_copy) * float(edits["scale_y"]/100))
+    if new_width != len(working_copy[0]) or new_height != len(working_copy):
+        working_copy = scale_matrix(working_copy, new_width, new_height)  # Helper function because I went down a rabbit hole
+
 
     # Output row-by-row
     # Requires that ascii list is formatted like [[row][row][row]]
     if print_output:
         print()
     else:
-        output = open("output.txt", "w") # TODO ask user for output file name
+        output = open("output.txt", "w")
         
     # Iterate through rows of pixels
     for row in working_copy:
@@ -168,6 +138,7 @@ def invert_brightness(pixels):
         invert = input("\nINVALID INPUT.\nWould you like to invert the image brightness? [y/n]: ")
 
     # Flip the numbers around if yes
+    # Probably should do this in the application phase in write_img... meh whatever
     if invert[0].lower() == "y":
         for row in range(len(pixels)):
             for pixel in range(len(pixels[0])):
@@ -224,11 +195,11 @@ def adjust_brightness_threshold(pixels, edits):
             if int(user_choice) == 1: # Adjust min, make sure to not exceed past the current maximum brightness
                 input_option = f"\nInput a minimum brightness value between 0 to {edits["maximum_thres"]}: "
                 boundaries = [0, edits["maximum_thres"]]
-                print("Pro tip: A value of 0 won't change anything.")
+                print("\nPro tip: A value of 0 won't change anything.")
             else: # Likewise
                 input_option = f"\nInput a maximum brightness value between {edits["minimum_thres"]} to 255: "
                 boundaries = [edits["minimum_thres"], 255]
-                print("Pro tip: A value of 255 won't change anything.")
+                print("\nPro tip: A value of 255 won't change anything.")
             
             # Ask for pixel value
             brightness_threshold = input(input_option)
@@ -253,9 +224,9 @@ def crop(pixels, edits):
         print("3 - Crop top")
         print("4 - Crop bottom")
         print("5 - Display ascii art")
-        print("6 - Reset croppings")
+        print("6 - Reset crop")
         print("7 - Go back")
-        print(f"\nCURRENT crops: {edits["crop_l"]} (left), {edits["crop_r"]} (right), {edits["crop_t"]} (top), {edits["crop_b"]} (bottom).")
+        print(f"\nCURRENT PIXELS CROPPED: {edits["crop_l"]} (left), {edits["crop_r"]} (right), {edits["crop_t"]} (top), {edits["crop_b"]} (bottom).")
 
         user_choice = input("\nPlease select a number: ")
         while not user_choice.isdigit() or not (1 <= int(user_choice) and int(user_choice) <= 7):
@@ -264,7 +235,7 @@ def crop(pixels, edits):
         # Now with user input, we can run their choice
         if int(user_choice) == 7:
             if [edits["crop_l"], edits["crop_r"], edits["crop_t"], edits["crop_b"]] != beginning_thresholds:
-                print("\nCROPPING SAVED!")
+                print("\nCROP SAVED!")
                 return True
             return False
         
@@ -273,14 +244,13 @@ def crop(pixels, edits):
             edits["crop_r"] = 0
             edits["crop_t"] = 0
             edits["crop_b"] = 0
-            print("\nRESET THRESHOLDS!") # Reset
+            print("\nRESET CROPS!") # Reset
 
         elif int(user_choice) == 5:
             write_img(pixels, edits) # Display ascii art
         
-        else: # Adjust croppings
-            print("Pro tip: A value of 0 won't crop anything.")
-            input_option = "\nHow many characters would you like to crop off the "
+        else: # Adjust crops, do note that cropping gets rendered before scaling, so we are only cropping pixels from the original image
+            input_option = "\nHow many pixels from the original image would you like to crop off the "
             if int(user_choice) == 1: # Left, make sure to not exceed past the current right crop
                 input_option += "left? "
                 boundary = len(pixels[0]) - edits["crop_r"]
@@ -295,19 +265,80 @@ def crop(pixels, edits):
                 boundary = len(pixels) - edits["crop_t"]
             input_option += f"Enter a value between 0 and {boundary}: "
             
-            # Ask for crop amount
-            crop = input(input_option)
-            while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= boundary):
-                crop = input(f"\nINVALID INPUT.{input_option}")
+            if boundary == 0:
+                print("\nNo more space to crop! Try adjusting the crop on the other side first...") # TODO make messages like these go under the menu when it next reappears
+            else: # Ask for crop amount
+                print("\nPro tip: A value of 0 won't crop anything.")
+                crop = input(input_option)
+                while not crop.isdigit() or not (0 <= int(crop) and int(crop) <= boundary):
+                    crop = input(f"\nINVALID INPUT.{input_option}")
 
-            if int(user_choice) == 1: # Update left crop
-                edits["crop_l"] = int(crop)
-            elif int(user_choice) == 2: # Right crop
-                edits["crop_r"] = int(crop)
-            elif int(user_choice) == 3: # Top crop
-                edits["crop_t"] = int(crop)
-            elif int(user_choice) == 4: # Bottom crop
-                edits["crop_b"] = int(crop)
+                if int(user_choice) == 1: # Update left crop
+                    edits["crop_l"] = int(crop)
+                elif int(user_choice) == 2: # Right crop
+                    edits["crop_r"] = int(crop)
+                elif int(user_choice) == 3: # Top crop
+                    edits["crop_t"] = int(crop)
+                elif int(user_choice) == 4: # Bottom crop
+                    edits["crop_b"] = int(crop)
+
+
+
+def scale(pixels, edits):
+    beginning_thresholds = [edits["scale_x"], edits["scale_y"]]
+    
+    # Sub menu for scaling
+    while True:
+        print("\nSCALING OPTIONS:")
+        print("1 - Scale")
+        print("2 - Scale width only")
+        print("3 - Scale height only")
+        print("4 - Display ascii art")
+        print("5 - Reset scale")
+        print("6 - Go back")
+        print(f"\nCURRENT SCALE: {edits["scale_x"]}% (width), {edits["scale_y"]}% (height)")
+
+        user_choice = input("\nPlease select a number: ")
+        while not user_choice.isdigit() or not (1 <= int(user_choice) and int(user_choice) <= 6):
+            user_choice = input("\nINVALID INPUT.\nPlease select a number: ")
+
+        # Now with user input, we can run their choice
+        if int(user_choice) == 6:
+            if [edits["scale_x"], edits["scale_y"]] != beginning_thresholds:
+                print("\nSCALING SAVED!")
+                return True
+            return False
+        
+        elif int(user_choice) == 5:
+            edits["scale_x"] = 100
+            edits["scale_y"] = 100
+            print("\nRESET SCALE!") # Reset
+
+        elif int(user_choice) == 4:
+            write_img(pixels, edits) # Display ascii art
+        
+        else: # Adjust scale
+            print("\nPro tip: A value of 100% is the original size of the image.")
+            if int(user_choice) == 1 or int(user_choice) == 2: # Select new width
+                scale_width = input(f"\nEnter a percentage for width (currently {edits["scale_x"]}): ")
+                while not scale_width.isdigit() or int(scale_width) < 0:
+                    scale_width = input(f"\nINVALID INPUT.\nEnter a percentage for width (currently {edits["scale_x"]}): ")
+                edits["scale_x"] = int(scale_width)
+
+            if int(user_choice) == 1 or int(user_choice) == 3: # Select new height
+                keep_ratio = "n"
+                if int(user_choice) == 1: # If doing a diagonal, give the option to keep the aspect ratio
+                    keep_ratio = input("\nWould you like to keep the same aspect ratio? [y/n]: ")
+                    while keep_ratio == '' or keep_ratio[0].lower() not in "yn":
+                        keep_ratio = input("\nINVALID INPUT.\nWould you like to keep the same aspect ratio? [y/n]: ")
+                    
+                if keep_ratio[0].lower() == "n": # Ask for new height
+                    scale_height = input(f"\nEnter a percentage for height (currently {edits["scale_y"]}): ")
+                    while not scale_height.isdigit() or int(scale_height) < 0:
+                        scale_height = input(f"\nINVALID INPUT.\nEnter a percentage for height (currently {edits["scale_y"]}): ")
+                else: # Keep aspect ratio
+                    scale_height = scale_width
+                edits["scale_y"] = int(scale_height)
 
 
 
@@ -331,25 +362,29 @@ def exit_program(saved):
 
 def main():
     img = None
-    edits = {"minimum_thres": 0, "maximum_thres": 255, "fill_thres": 0, "crop_l": 0, "crop_r": 0, "crop_t": 0, "crop_b": 0, "scale_x": None, "scale_y": None}
+    edits = {"minimum_thres": 0, "maximum_thres": 255, "fill_thres": 0, "crop_l": 0, "crop_r": 0, "crop_t": 0, "crop_b": 0, "scale_x": 100, "scale_y": 100}
 
     # Infinite loop until user is finished making the ascii art
     while True:
         option = show_menu(img)
 
         if option == 1:
-            # TODO Check if we are overwriting a save by accident
-            # if saved == False and img == None:...
+            # Check if we are overwriting a save by accident
+            new_image = "y"
+            if img != None and saved == False: # Short circuited on the first go-around
+                new_image = input("\nAre you sure you want to change the photo before saving your current ascii art? [y/n]: ")
+                while new_image == '' or new_image[0].lower() not in "yn":
+                    new_image = input("\nINVALID INPUT.\nAre you sure you want to change the photo before saving your current ascii art? [y/n]: ")
 
-            saved = False
-            img = get_img(img==None)
+            if new_image[0].lower() == "y":
+                saved = False
+                img = get_img(img==None)
 
-            # Get list of rows formatted like [[row][row][row]] of pixel values for output
-            pixels = list(img.getdata())
-            edits["scale_x"], edits["scale_y"] = img.size
-            pixels = [pixels[i * edits["scale_x"]:(i+1) * edits["scale_x"]] for i in range(edits["scale_y"])]
+                # Get list of rows formatted like [[row][row][row]] of pixel values for output
+                pixels = list(img.getdata())
+                width, height = img.size
+                pixels = [pixels[i * width:(i+1) * width] for i in range(height)]
             
-
         elif option == 2:
             write_img(pixels, edits) # Display ascii art
 
@@ -368,22 +403,21 @@ def main():
             saved = not crop(pixels, edits) and saved
 
         elif option == 7:
-            saved = False
+            saved = not scale(pixels, edits) and saved
 
         elif option == 8:
             if exit_program(saved):
                 break
-                
-        
 
         
         # TODO
-        # add image scaling
+        # Next version:
+        # Improve the location of menu text (such as warnings, notifications like IMAGE SAVED! and such)
+        # ask user for output file name
         # add undo option
         # add help menu
         # Allow user to change order of Ascii character brightnesses (for other fonts)
-        # Instead of linear [y/n] questioning, make it terminal prompt like, probably using regex
-        # ascii_art_img = manipulate_pixels(img)
+        # Regex in addition to number select
 
     print("\nEXITING PROGRAM... Goodbye!")
 
